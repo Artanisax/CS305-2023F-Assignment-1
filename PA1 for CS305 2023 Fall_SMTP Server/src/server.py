@@ -58,6 +58,7 @@ class POP3Server(BaseRequestHandler):
         }
         super(POP3Server, self).__init__(request, client_address, server)
     
+    
     def handle(self):
         conn = self.request
         # TODO
@@ -99,6 +100,7 @@ class POP3Server(BaseRequestHandler):
     def send(self, msg):
         self.request.send(f"{msg}\r\n".encode("utf-8"))
     
+    
     def handle_USER(self, args):
         if len(args) != 1:
             self.send("-ERR invalid username")
@@ -114,6 +116,7 @@ class POP3Server(BaseRequestHandler):
             self.send("+OK username confirmed")
         else:
             self.send("-ERR invalid username")
+    
     
     def handle_PASS(self, args):
         if len(args) != 1:
@@ -132,6 +135,7 @@ class POP3Server(BaseRequestHandler):
         else:
             self.send("-ERR wrong password")
     
+    
     def handle_STAT(self, args):
         if len(args) > 0:
             self.send("-ERR invalid arguments")
@@ -140,6 +144,7 @@ class POP3Server(BaseRequestHandler):
         total = len(self.mailbox)
         tot_size = sum(len(mail) for mail in self.mailbox)
         self.send(f"+OK {total} {tot_size}")
+    
     
     def handle_LIST(self, args):
         if len(args) > 1:
@@ -164,6 +169,7 @@ class POP3Server(BaseRequestHandler):
                 if i not in self.pre_del:
                     self.send(f"{i} {len(mail)}")
             self.send(".")
+
 
     def handle_RETR(self, args):
         if len(args) != 1:
@@ -192,6 +198,7 @@ class POP3Server(BaseRequestHandler):
             self.pre_del.append(idx)
             self.send("+OK")
     
+    
     def handle_RSET(self, args):
         if len(args) > 0:
             self.send("-ERR invalid arguments")
@@ -200,12 +207,14 @@ class POP3Server(BaseRequestHandler):
         self.pre_del.clear()
         self.send("+OK")
     
+    
     def handle_NOOP(self, args):
         if len(args) > 0:
             self.send("-ERR invalid arguments")
             return
         
         self.send("+OK")
+    
     
     def handle_QUIT(self, args):
         for i in self.pre_del:
