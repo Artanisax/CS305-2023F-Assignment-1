@@ -64,13 +64,10 @@ class POP3Server(BaseRequestHandler):
         # TODO
         try:
             self.send("+OK POP3 server ready")
-            while True:
+            cmd = ""
+            args = []
+            while cmd != "QUIT" or len(args) != 0:
                 data = conn.recv(1024).decode("utf-8").strip().split()
-                
-                if len(data) == 0:
-                    continue
-                
-                print(data)
                 cmd = data[0].upper() if len(data) > 0 else None
                 args = data[1:] if len(data) > 1 else []
                 
