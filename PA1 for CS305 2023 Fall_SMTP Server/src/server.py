@@ -41,7 +41,6 @@ def fdns_query(domain: str, type_: str) -> str | None:
 
 class POP3Server(BaseRequestHandler):
     def __init__(self, request, client_address, server):
-        super().__init__(request, client_address, server)
         self.username = None
         self.login = False
         self.mailbox = None
@@ -57,6 +56,7 @@ class POP3Server(BaseRequestHandler):
             'NOOP': self.handle_NOOP,
             'QUIT': self.handle_QUIT,
         }
+        super(POP3Server, self).__init__(request, client_address, server)
     
     def handle(self):
         conn = self.request
@@ -64,15 +64,18 @@ class POP3Server(BaseRequestHandler):
         try:
             self.send("+OK POP3 server ready")
             while True:
-                recv = conn.recv(4096)
-                data = recv.decode("utf-8").split()
-                cmd = data[0].upper()
+                data = conn.recv(1024).decode("utf-8").strip().split()
+                
+                if len(data) == 0:
+                    continue
+                
+                cmd = data[0].upper() if len(data) > 0 else None
                 args = data[1:] if len(data) > 1 else []
                 
                 if cmd not in self.handle_op:
-                    self.send("-ERR Invalid command")
-                    return
-                
+                    self.send("-ERR invalid command")
+                    continue
+                    
                 if self.login:
                     self.handle_op[cmd](args)
                 else:
@@ -87,39 +90,42 @@ class POP3Server(BaseRequestHandler):
                         else:
                             self.send("-ERR need password for login")
         except Exception as e:
-            self.send("-ERR An unknown error occurred") 
+            self.send("-ERR an unknown error occurred")
+        finally:
+            conn.close()
+            
         
     def send(self, msg):
         self.request.send(f"{msg}\r\n".encode("utf-8"))
     
     def handle_USER(self, args):
         if len(args) != 1:
-            self.send("-ERR Invalid username")
+            self.send("-ERR invalid username")
             return
         
         username = args[0]
         if username in ACCOUNTS:
             self.username = username
-            self.send("+OK Username confirmed")
+            self.send("+OK username confirmed")
         else:
-            self.send("-ERR Invalid username")
+            self.send("-ERR invalid username")
     
     def handle_PASS(self):
         if len(args) != 1:
-            self.send("-ERR Invalid password")
+            self.send("-ERR invalid password")
             return
         
         password = args[0]
         if password == ACCOUNTS[self.username]:
             self.login = True
             self.mailbox = MAILBOXES[self.username]
-            self.send("+OK Account login")
+            self.send("+OK successfully login")
         else:
-            self.send("-ERR Wrong password")
+            self.send("-ERR wrong password")
     
     def handle_STAT(self, args):
         if len(args) > 0:
-            self.send("-ERR Invalid arguments")
+            self.send("-ERR invalid arguments")
             return
         
         total = len(self.mailbox)
@@ -128,13 +134,13 @@ class POP3Server(BaseRequestHandler):
     
     def handle_LIST(self, args):
         if len(args) > 1:
-            self.send("-ERR Invalid arguments")
+            self.send("-ERR invalid arguments")
             return
 
         if args:
             idx = int(args[0]) - 1
             if idx in self.pre_del or idx < 0 or idx >= len(self.mailbox):
-                self.send(f"-ERR Inexsistent email")
+                self.send(f"-ERR inexsistent email")
             else:
                 size = len(self.mailbox[idx])
                 self.send(f"+OK {size}")
@@ -152,12 +158,12 @@ class POP3Server(BaseRequestHandler):
 
     def handle_RETR(self, args):
         if len(args) != 1:
-            self.send("-ERR Invalid arguments")
+            self.send("-ERR invalid arguments")
             return
         
         idx = int(args[0]) - 1
         if idx in self.pre_del or idx < 0 or idx >= len(self.mailbox):
-            self.send(f"-ERR Inexsistent email")
+            self.send(f"-ERR inexsistent email")
         else:
             size = len(self.mailbox[idx])
             self.send(f"+OK {size} bytes")
@@ -167,25 +173,29 @@ class POP3Server(BaseRequestHandler):
 
     def handle_DELE(self, args):
         if len(args) != 1:
-            self.send("-ERR Invalid arguments")
+            self.send("-ERR invalid arguments")
             return
         
         idx = int(args[0]) - 1
         if idx in self.pre_del or idx < 0 or idx >= len(self.mailbox):
-            self.send(f"-ERR Inexsistent email")
+            self.send(f"-ERR inexsistent email")
         else:
             self.pre_del.append(idx)
             self.send("+OK")
     
     def handle_RSET(self, args):
         if len(args) > 0:
-            self.send("-ERR Invalid arguments")
+            self.send("-ERR invalid arguments")
             return
         
         self.pre_del.clear()
         self.send("+OK")
     
     def handle_NOOP(self, args):
+        if len(args) > 0:
+            self.send("-ERR invalid arguments")
+            return
+        
         self.send("+OK")
     
     def handle_QUIT(self, args):
@@ -206,10 +216,17 @@ class SMTPServer(BaseRequestHandler):
 
 
 if __name__ == '__main__':
-    if student_id() % 10000 == 0:
-        raise ValueError('Invalid student ID')
+    try:
+        if student_id() % 10000 == 0:
+            raise ValueError('Invalid student ID')
 
-    smtp_server = ThreadingTCPServer(('', SMTP_PORT), SMTPServer)
-    pop_server = ThreadingTCPServer(('', POP_PORT), POP3Server)
-    Thread(target=smtp_server.serve_forever).start()
-    Thread(target=pop_server.serve_forever).start()
+        smtp_server = ThreadingTCPServer(('', SMTP_PORT), SMTPServer)
+        pop_server = ThreadingTCPServer(('', POP_PORT), POP3Server)
+        Thread(target=smtp_server.serve_forever).start()
+        Thread(target=pop_server.serve_forever).start()
+    
+    except KeyboardInterrupt:
+        smtp_server.shutdown()
+        pop_server.shutdown()
+        smtp_server.server_close()
+        pop_server.server_close()
