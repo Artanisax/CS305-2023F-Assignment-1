@@ -69,6 +69,7 @@ class POP3Server(BaseRequestHandler):
                 if len(data) == 0:
                     continue
                 
+                print(data)
                 cmd = data[0].upper() if len(data) > 0 else None
                 args = data[1:] if len(data) > 1 else []
                 
@@ -81,12 +82,12 @@ class POP3Server(BaseRequestHandler):
                 else:
                     if not self.username:
                         if cmd == "USER":
-                            self.username = self.handle_op["USER"](args)
+                            self.handle_op["USER"](args)
                         else:
                             self.send("-ERR need username for login")
                     else:
                         if cmd == "PASS":
-                            self.login = self.handle_op["PASS"](args)
+                            self.handle_op["PASS"](args)
                         else:
                             self.send("-ERR need password for login")
         except Exception as e:
@@ -103,6 +104,10 @@ class POP3Server(BaseRequestHandler):
             self.send("-ERR invalid username")
             return
         
+        if self.login:
+            self.send("-ERR have logged in")
+            return
+        
         username = args[0]
         if username in ACCOUNTS:
             self.username = username
@@ -110,16 +115,20 @@ class POP3Server(BaseRequestHandler):
         else:
             self.send("-ERR invalid username")
     
-    def handle_PASS(self):
+    def handle_PASS(self, args):
         if len(args) != 1:
             self.send("-ERR invalid password")
+            return
+        
+        if self.login:
+            self.send("-ERR have logged in")
             return
         
         password = args[0]
         if password == ACCOUNTS[self.username]:
             self.login = True
             self.mailbox = MAILBOXES[self.username]
-            self.send("+OK successfully login")
+            self.send("+OK successfully logged in")
         else:
             self.send("-ERR wrong password")
     
@@ -130,7 +139,7 @@ class POP3Server(BaseRequestHandler):
         
         total = len(self.mailbox)
         tot_size = sum(len(mail) for mail in self.mailbox)
-        self.send(f"{total} {tot_size}")
+        self.send(f"+OK {total} {tot_size}")
     
     def handle_LIST(self, args):
         if len(args) > 1:
