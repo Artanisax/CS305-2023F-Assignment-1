@@ -288,7 +288,6 @@ class SMTPServer(BaseRequestHandler):
 
         self.rcpt_to.append(args[0][4: -1]) 
         self.send(250, "Ok")
-        
     
     def _DATA(self, args):
         if len(args) > 0:
@@ -301,7 +300,6 @@ class SMTPServer(BaseRequestHandler):
         # Send the email
         
         self.send(250, "Ok")
-        
     
     def _QUIT(self, args):
         if len(args) > 0:
@@ -309,10 +307,6 @@ class SMTPServer(BaseRequestHandler):
         
         self.request.close()
         self.send(221, "SMTP server signing off")
-        
-    
-    def send_email():
-        pass
 
 
 if __name__ == '__main__':
