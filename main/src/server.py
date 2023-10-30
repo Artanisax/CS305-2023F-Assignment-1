@@ -62,154 +62,154 @@ class POP3Server(BaseRequestHandler):
     def handle(self):
         conn = self.request
         try:
-            cmd = ""
+            cmd = ''
             args = []
-            self.send("+OK POP3 server ready")
-            while cmd != "QUIT" or len(args) != 0:
-                data = conn.recv(1024).decode("utf-8").strip().split()
+            self.send('+OK POP3 server ready')
+            while cmd != 'QUIT' or len(args) != 0:
+                data = conn.recv(1024).decode().strip().split()
                 cmd = data[0].upper() if len(data) > 0 else None
                 args = data[1:] if len(data) > 1 else []
                 
                 if cmd not in self.handle_op:
-                    self.send("-ERR invalid command")
+                    self.send('-ERR invalid command')
                     continue
                     
                 if self.login:
                     self.handle_op[cmd](args)
                 else:
                     if not self.username:
-                        if cmd == "USER":
-                            self.handle_op["USER"](args)
+                        if cmd == 'USER':
+                            self.handle_op['USER'](args)
                         else:
-                            self.send("-ERR need username for login")
+                            self.send('-ERR need username for login')
                     else:
-                        if cmd == "PASS":
-                            self.handle_op["PASS"](args)
+                        if cmd == 'PASS':
+                            self.handle_op['PASS'](args)
                         else:
-                            self.send("-ERR need password for login")
+                            self.send('-ERR need password for login')
         except Exception as e:
-            self.send("-ERR unknown error")
+            self.send('-ERR unknown error')
         finally:
             conn.close()
             
         
     def send(self, msg):
-        self.request.send(f"{msg}\r\n".encode("utf-8"))
+        self.request.send(f'{msg}\r\n'.encode())
     
     
     def _USER(self, args):
         if len(args) != 1:
-            self.send("-ERR invalid username")
+            self.send('-ERR invalid username')
             return
         
         if self.login:
-            self.send("-ERR have logged in")
+            self.send('-ERR have logged in')
             return
         
         username = args[0]
         if username in ACCOUNTS:
             self.username = username
-            self.send("+OK username confirmed")
+            self.send('+OK username confirmed')
         else:
-            self.send("-ERR invalid username")
+            self.send('-ERR invalid username')
     
     
     def _PASS(self, args):
         if len(args) != 1:
-            self.send("-ERR invalid password")
+            self.send('-ERR invalid password')
             return
         
         if self.login:
-            self.send("-ERR have logged in")
+            self.send('-ERR have logged in')
             return
         
         password = args[0]
         if password == ACCOUNTS[self.username]:
             self.login = True
             self.mailbox = MAILBOXES[self.username]
-            self.send("+OK successfully logged in")
+            self.send('+OK successfully logged in')
         else:
-            self.send("-ERR wrong password")
+            self.send('-ERR wrong password')
     
     
     def _STAT(self, args):
         if len(args) > 0:
-            self.send("-ERR invalid arguments")
+            self.send('-ERR invalid arguments')
             return
         
         total = len(self.mailbox)
         tot_size = sum(len(mail) for mail in self.mailbox)
-        self.send(f"+OK {total} {tot_size}")
+        self.send(f'+OK {total} {tot_size}')
     
     
     def _LIST(self, args):
         if len(args) > 1:
-            self.send("-ERR invalid arguments")
+            self.send('-ERR invalid arguments')
             return
 
         if args:
             idx = int(args[0]) - 1
             if idx in self.pre_del or idx < 0 or idx >= len(self.mailbox):
-                self.send(f"-ERR inexsistent email")
+                self.send(f'-ERR inexsistent email')
             else:
                 size = len(self.mailbox[idx])
-                self.send(f"+OK {size}")
+                self.send(f'+OK {size}')
         else:
             total = len(self.mailbox) - len(self.pre_del)
             tot_size = 0
             for i, mail in enumerate(self.mailbox):
                 if i not in self.pre_del:
                     tot_size = tot_size + len(mail)
-            self.send(f"+OK {total} messages ({tot_size} bytes)")
+            self.send(f'+OK {total} messages ({tot_size} bytes)')
             for i, mail in enumerate(self.mailbox, 1):
                 if i not in self.pre_del:
-                    self.send(f"{i} {len(mail)}")
-            self.send(".")
+                    self.send(f'{i} {len(mail)}')
+            self.send('.')
 
 
     def _RETR(self, args):
         if len(args) != 1:
-            self.send("-ERR invalid arguments")
+            self.send('-ERR invalid arguments')
             return
         
         idx = int(args[0]) - 1
         if idx in self.pre_del or idx < 0 or idx >= len(self.mailbox):
-            self.send(f"-ERR inexsistent email")
+            self.send(f'-ERR inexsistent email')
         else:
             size = len(self.mailbox[idx])
-            self.send(f"+OK {size} bytes")
-            self.send(f"<{self.mailbox[idx]}>")
-            self.send(".")
+            self.send(f'+OK {size} bytes')
+            self.send(f'<{self.mailbox[idx]}>')
+            self.send('.')
             
 
     def _DELE(self, args):
         if len(args) != 1:
-            self.send("-ERR invalid arguments")
+            self.send('-ERR invalid arguments')
             return
         
         idx = int(args[0]) - 1
         if idx in self.pre_del or idx < 0 or idx >= len(self.mailbox):
-            self.send(f"-ERR inexsistent email")
+            self.send(f'-ERR inexsistent email')
         else:
             self.pre_del.append(idx)
-            self.send("+OK")
+            self.send('+OK')
     
     
     def _RSET(self, args):
         if len(args) > 0:
-            self.send("-ERR invalid arguments")
+            self.send('-ERR invalid arguments')
             return
         
         self.pre_del.clear()
-        self.send("+OK")
+        self.send('+OK')
     
     
     def _NOOP(self, args):
         if len(args) > 0:
-            self.send("-ERR invalid arguments")
+            self.send('-ERR invalid arguments')
             return
         
-        self.send("+OK")
+        self.send('+OK')
     
     
     def _QUIT(self, args):
@@ -219,7 +219,7 @@ class POP3Server(BaseRequestHandler):
         self.login = False
         self.mailbox = None
         self.pre_del = []
-        self.send("+OK POP3 server signing off")
+        self.send('+OK POP3 server signing off')
         self.request.close()
     
 
@@ -242,74 +242,74 @@ class SMTPServer(BaseRequestHandler):
     def handle(self):
         conn = self.request
         try:
-            cmd = ""
+            cmd = ''
             args = []
-            self.send(220, "SMTP server ready")
-            while cmd != "QUIT" or args != "":
-                data = conn.recv(1024).decode("utf-8").strip().split()
+            self.send(220, 'SMTP server ready')
+            while cmd != 'QUIT' or args != '':
+                data = conn.recv(1024).decode().strip().split()
                 cmd = data[0].upper()
                 args = data[1:] if len(data) > 1 else []
 
                 if cmd in self.handle_op:
                     self.handle_op[cmd](args)
                 else:
-                    self.send(500, "invalid command")
+                    self.send(500, 'invalid command')
 
         except Exception as e:
-            self.send("An unknown error occurred.")
+            self.send('An unknown error occurred.')
         finally:
             conn.close()
     
     
     def send(self, code, msg):
-        self.request.send(f"{code} {msg}\r\n".encode("utf-8"))
-        # print(f">>> Received: {self.recv}")
-        # print(f">>> {code} {msg}")
+        self.request.send(f'{code} {msg}\r\n'.encode())
+        # print(f'>>> Received: {self.recv}')
+        # print(f'>>> {code} {msg}')
         # print()
         
     
     def _HELO(self, args):
         if len(args) != 1:
-            self.send(501, "Invalid arguments")
+            self.send(501, 'Invalid arguments')
 
-        self.send(250, f"Hello, {args}")
+        self.send(250, f'Hello, {args}')
     
     
     def _MAIL(self, args):
         if len(args) != 1:
-            self.send(501, "Invalid arguments")
+            self.send(501, 'Invalid arguments')
         
         self.mail_from = args[0][6: -1] 
-        self.send(250, "Ok")
+        self.send(250, 'Ok')
     
     
     def _RCPT(self, args):
         if len(args) != 1:
-            self.send(501, "Invalid arguments")
+            self.send(501, 'Invalid arguments')
 
         self.rcpt_to.append(args[0][4: -1]) 
-        self.send(250, "Ok")
+        self.send(250, 'Ok')
         
     
     def _DATA(self, args):
         if len(args) > 0:
-            self.send(501, "Invalid arguments")
+            self.send(501, 'Invalid arguments')
 
-        self.send(354, "End data with <CR><LF>.<CR><LF>")
-        content = ""
-        while content.endswith("\r\n.\r\n"):
+        self.send(354, 'End data with <CR><LF>.<CR><LF>')
+        content = ''
+        while content.endswith('\r\n.\r\n'):
             content = content + self.request.recv(1024)
         # Send the email
         
-        self.send(250, "Ok")
+        self.send(250, 'Ok')
         
     
     def _QUIT(self, args):
         if len(args) > 0:
-            self.send(501, "Invalid arguments")
+            self.send(501, 'Invalid arguments')
         
         self.request.close()
-        self.send(221, "SMTP server signing off")
+        self.send(221, 'SMTP server signing off')
         
     
     def send_email():
