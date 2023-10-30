@@ -301,16 +301,16 @@ class SMTPServer(BaseRequestHandler):
 
         self.rcpt_to.append(args[0][4: -1]) 
         self.send(250, 'Ok')
+        self.data_content = ''
         
     
     def _DATA(self, args):
         if len(args) > 0:
             self.send(501, 'Invalid arguments')
-        if len(self.rcpt_to) == 0:
+        if self.data_content is None:
             self.send(503, 'Bad sequence')
         
         self.send(354, 'End data with <CR><LF>.<CR><LF>')
-        self.data_content = ''
         line = self.request.recv(1024).decode()
         self.data_content = self.data_content + line
         print(f'>>> content: {self.data_content}')
@@ -352,6 +352,7 @@ class SMTPServer(BaseRequestHandler):
         else:
             self.rcpt_to.append(rcpt) 
             self.send(250, 'Ok')
+        self.data_content = ''
         
     
     def send_mail(self):

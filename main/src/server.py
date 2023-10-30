@@ -247,24 +247,24 @@ class SMTPServer(BaseRequestHandler):
         
     def handle(self):
         conn = self.request
-        # try:
-        cmd = ''
-        args = []
-        self.send(220, 'SMTP server ready')
-        while cmd != 'QUIT' or len(args) > 0:
-            data = conn.recv(1024).decode().strip().split()
-            cmd = data[0].upper()
-            args = data[1:] if len(data) > 1 else []
-            print(f'>>> {cmd} {args}')
-            if cmd in self.handle_op:
-                self.handle_op[cmd](args)
-            else:
-                self.send(500, 'Invalid command')
+        try:
+            cmd = ''
+            args = []
+            self.send(220, 'SMTP server ready')
+            while cmd != 'QUIT' or len(args) > 0:
+                data = conn.recv(1024).decode().strip().split()
+                cmd = data[0].upper()
+                args = data[1:] if len(data) > 1 else []
+                print(f'>>> {cmd} {args}')
+                if cmd in self.handle_op:
+                    self.handle_op[cmd](args)
+                else:
+                    self.send(500, 'Invalid command')
 
-        # except Exception as e:
-        #     self.send(-1, 'An unknown error occurred.')
-        # finally:
-        conn.close()
+        except Exception as e:
+            self.send(-1, 'An unknown error occurred.')
+        finally:
+            conn.close()
     
     
     def send(self, code, msg):
@@ -301,16 +301,16 @@ class SMTPServer(BaseRequestHandler):
 
         self.rcpt_to.append(args[0][4: -1]) 
         self.send(250, 'Ok')
+        self.data_content = ''
         
     
     def _DATA(self, args):
         if len(args) > 0:
             self.send(501, 'Invalid arguments')
-        if len(self.rcpt_to) == 0:
+        if self.data_content is None:
             self.send(503, 'Bad sequence')
         
         self.send(354, 'End data with <CR><LF>.<CR><LF>')
-        self.data_content = ''
         line = self.request.recv(1024).decode()
         self.data_content = self.data_content + line
         print(f'>>> content: {self.data_content}')
@@ -352,6 +352,7 @@ class SMTPServer(BaseRequestHandler):
         else:
             self.rcpt_to.append(rcpt) 
             self.send(250, 'Ok')
+        self.data_content = ''
         
     
     def send_mail(self):
