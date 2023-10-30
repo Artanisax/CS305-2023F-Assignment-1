@@ -225,6 +225,7 @@ class POP3Server(BaseRequestHandler):
 
 class SMTPServer(BaseRequestHandler):
     def __init__(self, request, client_address, server):
+        self.domain = args.name
         self.mail_from = None
         self.rcpt_to = []
         self.handle_op = {
