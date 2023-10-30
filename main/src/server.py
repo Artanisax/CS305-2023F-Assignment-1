@@ -226,7 +226,6 @@ class POP3Server(BaseRequestHandler):
 class SMTPServer(BaseRequestHandler):
     def __init__(self, request, client_address, server):
         self.debug = None
-        self.domain = args.name
         self.authorization = False
         self.mail_from = None
         self.rcpt_to = []
@@ -248,11 +247,12 @@ class SMTPServer(BaseRequestHandler):
             cmd = ''
             args = []
             self.send(220, 'SMTP server ready')
-            while cmd != 'QUIT' or args != '':
+            while cmd != 'QUIT' or len(args) > 0:
                 data = conn.recv(1024).decode().strip().split()
                 self.debug = data
                 cmd = data[0].upper()
                 args = data[1:] if len(data) > 1 else []
+                print(f'>>>{cmd} {args}')
                 if cmd in self.handle_op:
                     self.handle_op[cmd](args)
                 else:
@@ -328,14 +328,13 @@ class SMTPServer(BaseRequestHandler):
         for rcpt in self.rcpt_to:
             domain = rcpt.split('@')[-1]
             server = fdns_query(domain, 'MX')
-            if server == self.domain:
+            if rcpt in ACCOUNTS:
                 MAILBOXES[rcpt].append(self.data_content)
             else:
                 if server in outsider:
                     outsider[server].append(rcpt)
                 else:
                     outsider[server] = [rcpt]
-        
         if len(outsider):
             conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             flag = False
@@ -348,7 +347,7 @@ class SMTPServer(BaseRequestHandler):
                     conn.connect((host, port))
                     assert conn.recv(1024).strip().decode().startswith('220')
                     
-                    conn.sendall(f'helo {self.domain}\r\n'.encode())
+                    conn.sendall(f'helo {args.name}\r\n'.encode())
                     assert conn.recv(1024).strip().decode().startswith('250')
                     
                     conn.sendall(f'mail FROM:<{self.mail_from}>\r\r'.encode())
@@ -369,7 +368,7 @@ class SMTPServer(BaseRequestHandler):
                     
                     flag = True
                 except AssertionError as e:
-                    print('An error occurred when sending emails')
+                    self.send(-1, 'An error occurred when sending emails')
                 finally:
                     conn.close()
                 
