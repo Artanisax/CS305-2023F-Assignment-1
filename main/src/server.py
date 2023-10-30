@@ -61,38 +61,38 @@ class POP3Server(BaseRequestHandler):
     
     def handle(self):
         conn = self.request
-        try:
-            cmd = ''
-            args = []
-            self.send('+OK POP3 server ready')
-            while cmd != 'QUIT' or len(args) != 0:
-                data = conn.recv(1024).decode().strip().split()
-                cmd = data[0].upper() if len(data) > 0 else None
-                args = data[1:] if len(data) > 1 else []
-                
-                if cmd not in self.handle_op:
-                    self.send('-ERR invalid command')
-                    continue
-                    
-                if self.login:
-                    self.handle_op[cmd](args)
-                else:
-                    if not self.username:
-                        if cmd == 'USER':
-                            self.handle_op['USER'](args)
-                        else:
-                            self.send('-ERR need username for login')
-                    else:
-                        if cmd == 'PASS':
-                            self.handle_op['PASS'](args)
-                        else:
-                            self.send('-ERR need password for login')
-        except Exception as e:
-            self.send('-ERR unknown error')
-        finally:
-            conn.close()
+        # try:
+        cmd = ''
+        args = []
+        self.send('+OK POP3 server ready')
+        while cmd != 'QUIT' or len(args) != 0:
+            data = conn.recv(1024).decode().strip().split()
+            cmd = data[0].upper() if len(data) > 0 else None
+            args = data[1:] if len(data) > 1 else []
             
+            if cmd not in self.handle_op:
+                self.send('-ERR invalid command')
+                continue
+                
+            if self.login:
+                self.handle_op[cmd](args)
+            else:
+                if not self.username:
+                    if cmd == 'USER':
+                        self.handle_op['USER'](args)
+                    else:
+                        self.send('-ERR need username for login')
+                else:
+                    if cmd == 'PASS':
+                        self.handle_op['PASS'](args)
+                    else:
+                        self.send('-ERR need password for login')
+        # except Exception as e:
+        #     self.send('-ERR unknown error')
+        # finally:
+        conn.close()
         
+    
     def send(self, msg):
         self.request.sendall(f'{msg}\r\n'.encode())
     
@@ -137,8 +137,11 @@ class POP3Server(BaseRequestHandler):
             self.send('-ERR invalid arguments')
             return
         
-        total = len(self.mailbox)
-        tot_size = sum(len(mail) for mail in self.mailbox)
+        total = len(self.mailbox) - len(self.pre_del)
+        tot_size = 0
+        for i, mail in enumerate(self.mailbox):
+            if i not in self.pre_del:
+                tot_size = tot_size + len(mail)
         self.send(f'+OK {total} {tot_size}')
     
     
@@ -178,7 +181,7 @@ class POP3Server(BaseRequestHandler):
         else:
             size = len(self.mailbox[idx])
             self.send(f'+OK {size} bytes')
-            self.send(f'<{self.mailbox[idx]}>')
+            self.send(self.mailbox[idx])
             self.send('.')
             
 
@@ -225,7 +228,6 @@ class POP3Server(BaseRequestHandler):
 
 class SMTPServer(BaseRequestHandler):
     def __init__(self, request, client_address, server):
-        self.debug = None
         self.authorization = False
         self.mail_from = None
         self.rcpt_to = []
@@ -243,29 +245,27 @@ class SMTPServer(BaseRequestHandler):
         
     def handle(self):
         conn = self.request
-        try:
-            cmd = ''
-            args = []
-            self.send(220, 'SMTP server ready')
-            while cmd != 'QUIT' or len(args) > 0:
-                data = conn.recv(1024).decode().strip().split()
-                self.debug = data
-                cmd = data[0].upper()
-                args = data[1:] if len(data) > 1 else []
-                print(f'>>>{cmd} {args}')
-                if cmd in self.handle_op:
-                    self.handle_op[cmd](args)
-                else:
-                    self.send(500, 'Invalid command')
+        # try:
+        cmd = ''
+        args = []
+        self.send(220, 'SMTP server ready')
+        while cmd != 'QUIT' or len(args) > 0:
+            data = conn.recv(1024).decode().strip().split()
+            cmd = data[0].upper()
+            args = data[1:] if len(data) > 1 else []
+            print(f'>>> {cmd} {args}')
+            if cmd in self.handle_op:
+                self.handle_op[cmd](args)
+            else:
+                self.send(500, 'Invalid command')
 
-        except Exception as e:
-            self.send(-1, 'An unknown error occurred.')
-        finally:
-            conn.close()
+        # except Exception as e:
+        #     self.send(-1, 'An unknown error occurred.')
+        # finally:
+        conn.close()
     
     
     def send(self, code, msg):
-        print(self.debug)
         self.request.sendall(f'{code} {msg}\r\n'.encode())
         
     
@@ -304,10 +304,12 @@ class SMTPServer(BaseRequestHandler):
             self.send(503, 'Bad sequence')
         
         self.send(354, 'End data with <CR><LF>.<CR><LF>')
-        content = ''
-        while content.endswith('\r\n.\r\n'):
-            content = content + self.request.recv(1024)
-        self.send_email()
+        self.data_content = ''
+        while not self.data_content.endswith('\r\n.\r\n'):
+            line = self.request.recv(1024).decode()
+            print(f'>>> content: {self.data_content}')
+            self.data_content = self.data_content + line
+        self.send_mail()
         self.send(250, 'Ok')
         
     
@@ -318,18 +320,20 @@ class SMTPServer(BaseRequestHandler):
         self.authorization = False
         self.mail_from = None
         self.rcpt_to = []
-        self.data_content = ''
+        self.data_content = None
         self.send(221, 'SMTP server signing off')
         self.request.close()
         
     
-    def send_email(self):
+    def send_mail(self):
+        flag = False
         outsider = {}
         for rcpt in self.rcpt_to:
             domain = rcpt.split('@')[-1]
             server = fdns_query(domain, 'MX')
             if rcpt in ACCOUNTS:
                 MAILBOXES[rcpt].append(self.data_content)
+                flag = True
             else:
                 if server in outsider:
                     outsider[server].append(rcpt)
@@ -337,7 +341,6 @@ class SMTPServer(BaseRequestHandler):
                     outsider[server] = [rcpt]
         if len(outsider):
             conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            flag = False
             for domain in outsider:
                 try:
                     domain = rcpt.split('@')[-1]
