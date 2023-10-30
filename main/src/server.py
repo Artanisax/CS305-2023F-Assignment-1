@@ -94,7 +94,7 @@ class POP3Server(BaseRequestHandler):
             
         
     def send(self, msg):
-        self.request.send(f'{msg}\r\n'.encode())
+        self.request.sendall(f'{msg}\r\n'.encode())
     
     
     def _USER(self, args):
@@ -200,7 +200,7 @@ class POP3Server(BaseRequestHandler):
             self.send('-ERR invalid arguments')
             return
         
-        self.pre_del.clear()
+        self.pre_del = []
         self.send('+OK')
     
     
@@ -225,9 +225,12 @@ class POP3Server(BaseRequestHandler):
 
 class SMTPServer(BaseRequestHandler):
     def __init__(self, request, client_address, server):
+        self.debug = None
         self.domain = args.name
+        self.authorization = False
         self.mail_from = None
         self.rcpt_to = []
+        self.data_content = None
         self.handle_op = {
             'HELO': self._HELO,
             'EHLO': self._HELO,
@@ -247,37 +250,38 @@ class SMTPServer(BaseRequestHandler):
             self.send(220, 'SMTP server ready')
             while cmd != 'QUIT' or args != '':
                 data = conn.recv(1024).decode().strip().split()
+                self.debug = data
                 cmd = data[0].upper()
                 args = data[1:] if len(data) > 1 else []
-
                 if cmd in self.handle_op:
                     self.handle_op[cmd](args)
                 else:
-                    self.send(500, 'invalid command')
+                    self.send(500, 'Invalid command')
 
         except Exception as e:
-            self.send('An unknown error occurred.')
+            self.send(-1, 'An unknown error occurred.')
         finally:
             conn.close()
     
     
     def send(self, code, msg):
-        self.request.send(f'{code} {msg}\r\n'.encode())
-        # print(f'>>> Received: {self.recv}')
-        # print(f'>>> {code} {msg}')
-        # print()
+        print(self.debug)
+        self.request.sendall(f'{code} {msg}\r\n'.encode())
         
     
     def _HELO(self, args):
         if len(args) != 1:
             self.send(501, 'Invalid arguments')
 
+        self.authorization = True
         self.send(250, f'Hello, {args}')
     
     
     def _MAIL(self, args):
         if len(args) != 1:
             self.send(501, 'Invalid arguments')
+        if not self.authorization or self.mail_from:
+            self.send(503, 'Bad sequence')
         
         self.mail_from = args[0][6: -1] 
         self.send(250, 'Ok')
@@ -286,6 +290,8 @@ class SMTPServer(BaseRequestHandler):
     def _RCPT(self, args):
         if len(args) != 1:
             self.send(501, 'Invalid arguments')
+        if not self.mail_from:
+            self.send(503, 'Bad sequence')
 
         self.rcpt_to.append(args[0][4: -1]) 
         self.send(250, 'Ok')
@@ -294,13 +300,14 @@ class SMTPServer(BaseRequestHandler):
     def _DATA(self, args):
         if len(args) > 0:
             self.send(501, 'Invalid arguments')
-
+        if len(self.rcpt_to) == 0:
+            self.send(503, 'Bad sequence')
+        
         self.send(354, 'End data with <CR><LF>.<CR><LF>')
         content = ''
         while content.endswith('\r\n.\r\n'):
             content = content + self.request.recv(1024)
-        # Send the email
-        
+        self.send_email()
         self.send(250, 'Ok')
         
     
@@ -308,12 +315,69 @@ class SMTPServer(BaseRequestHandler):
         if len(args) > 0:
             self.send(501, 'Invalid arguments')
         
-        self.request.close()
+        self.authorization = False
+        self.mail_from = None
+        self.rcpt_to = []
+        self.data_content = ''
         self.send(221, 'SMTP server signing off')
+        self.request.close()
         
     
-    def send_email():
-        pass
+    def send_email(self):
+        outsider = {}
+        for rcpt in self.rcpt_to:
+            domain = rcpt.split('@')[-1]
+            server = fdns_query(domain, 'MX')
+            if server == self.domain:
+                MAILBOXES[rcpt].append(self.data_content)
+            else:
+                if server in outsider:
+                    outsider[server].append(rcpt)
+                else:
+                    outsider[server] = [rcpt]
+        
+        if len(outsider):
+            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            flag = False
+            for domain in outsider:
+                try:
+                    domain = rcpt.split('@')[-1]
+                    server = fdns_query(domain, 'MX')
+                    host = 'localhost'
+                    port = int(fdns_query(server, 'P'))
+                    conn.connect((host, port))
+                    assert conn.recv(1024).strip().decode().startswith('220')
+                    
+                    conn.sendall(f'helo {self.domain}\r\n'.encode())
+                    assert conn.recv(1024).strip().decode().startswith('250')
+                    
+                    conn.sendall(f'mail FROM:<{self.mail_from}>\r\r'.encode())
+                    assert conn.recv(1024).strip().decode().startswith('250')
+                    
+                    for rcpt in outsider[domain]:
+                        conn.sendall(f'rcpt TO:<{rcpt}>\r\r'.encode())
+                        assert conn.recv(1024).strip().decode().startswith('250')
+                    
+                    conn.sendall(b'data\r\n')
+                    assert conn.recv(1024).strip().decode().startswith('354')
+                    
+                    conn.sendall(self.data_content.encode())
+                    assert conn.recv(1024).strip().decode().startswith('250')
+                    
+                    conn.sendall(b'quit\r\n')
+                    assert conn.recv(1024).strip().decode().startswith('221')
+                    
+                    flag = True
+                except AssertionError as e:
+                    print('An error occurred when sending emails')
+                finally:
+                    conn.close()
+                
+            if not flag:
+                MAILBOXES[self.mail_from].append(self.data_content)
+                    
+        self.rcpt_to = []
+        self.data_content = None
 
 
 if __name__ == '__main__':
