@@ -69,7 +69,7 @@ class POP3Server(BaseRequestHandler):
             data = conn.recv(1024).decode().strip().split()
             cmd = data[0].upper() if len(data) > 0 else None
             args = data[1:] if len(data) > 1 else []
-            
+            print(f'>>> {cmd} {args}')
             if cmd not in self.handle_op:
                 self.send('-ERR invalid command')
                 continue
@@ -181,8 +181,8 @@ class POP3Server(BaseRequestHandler):
         else:
             size = len(self.mailbox[idx])
             self.send(f'+OK {size} bytes')
-            self.send(self.mailbox[idx])
-            self.send('.')
+            self.request.sendall(self.mailbox[idx].encode())
+            print(f'>>> {self.mailbox[idx]}')
             
 
     def _DELE(self, args):
@@ -305,10 +305,9 @@ class SMTPServer(BaseRequestHandler):
         
         self.send(354, 'End data with <CR><LF>.<CR><LF>')
         self.data_content = ''
-        while not self.data_content.endswith('\r\n.\r\n'):
-            line = self.request.recv(1024).decode()
-            print(f'>>> content: {self.data_content}')
-            self.data_content = self.data_content + line
+        line = self.request.recv(1024).decode()
+        self.data_content = self.data_content + line
+        print(f'>>> content: {self.data_content}')
         self.send_mail()
         self.send(250, 'Ok')
         
@@ -363,7 +362,7 @@ class SMTPServer(BaseRequestHandler):
                     conn.sendall(b'data\r\n')
                     assert conn.recv(1024).strip().decode().startswith('354')
                     
-                    conn.sendall(self.data_content.encode())
+                    conn.sendall(self.data_content)
                     assert conn.recv(1024).strip().decode().startswith('250')
                     
                     conn.sendall(b'quit\r\n')
