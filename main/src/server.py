@@ -61,36 +61,36 @@ class POP3Server(BaseRequestHandler):
     
     def handle(self):
         conn = self.request
-        # try:
-        cmd = ''
-        args = []
-        self.send('+OK POP3 server ready')
-        while cmd != 'QUIT' or len(args) != 0:
-            data = conn.recv(1024).decode().strip().split()
-            cmd = data[0].upper() if len(data) > 0 else None
-            args = data[1:] if len(data) > 1 else []
-            print(f'>>> {cmd} {args}')
-            if cmd not in self.handle_op:
-                self.send('-ERR invalid command')
-                continue
-                
-            if self.login:
-                self.handle_op[cmd](args)
-            else:
-                if not self.username:
-                    if cmd == 'USER':
-                        self.handle_op['USER'](args)
-                    else:
-                        self.send('-ERR need username for login')
+        try:
+            cmd = ''
+            args = []
+            self.send('+OK POP3 server ready')
+            while cmd != 'QUIT' or len(args) != 0:
+                data = conn.recv(1024).decode().strip().split()
+                cmd = data[0].upper() if len(data) > 0 else None
+                args = data[1:] if len(data) > 1 else []
+                print(f'>>> {cmd} {args}')
+                if cmd not in self.handle_op:
+                    self.send('-ERR invalid command')
+                    continue
+                    
+                if self.login:
+                    self.handle_op[cmd](args)
                 else:
-                    if cmd == 'PASS':
-                        self.handle_op['PASS'](args)
+                    if not self.username:
+                        if cmd == 'USER':
+                            self.handle_op['USER'](args)
+                        else:
+                            self.send('-ERR need username for login')
                     else:
-                        self.send('-ERR need password for login')
-        # except Exception as e:
-        #     self.send('-ERR unknown error')
-        # finally:
-        conn.close()
+                        if cmd == 'PASS':
+                            self.handle_op['PASS'](args)
+                        else:
+                            self.send('-ERR need password for login')
+        except Exception as e:
+            self.send('-ERR unknown error')
+        finally:
+            conn.close()
         
     
     def send(self, msg):
@@ -340,39 +340,37 @@ class SMTPServer(BaseRequestHandler):
                     outsider[server] = [rcpt]
         if len(outsider):
             conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            for domain in outsider:
-                try:
-                    domain = rcpt.split('@')[-1]
-                    server = fdns_query(domain, 'MX')
-                    host = 'localhost'
-                    port = int(fdns_query(server, 'P'))
-                    conn.connect((host, port))
-                    assert conn.recv(1024).strip().decode().startswith('220')
-                    
-                    conn.sendall(f'helo {args.name}\r\n'.encode())
+            for server in outsider:
+                # try:
+                host = 'localhost'
+                port = int(fdns_query(server, 'P'))
+                conn.connect((host, port))
+                assert conn.recv(1024).strip().decode().startswith('220')
+                
+                conn.sendall(f'helo {args.name}\r\n'.encode())
+                assert conn.recv(1024).strip().decode().startswith('250')
+                
+                conn.sendall(f'mail FROM:<{self.mail_from}>\r\r'.encode())
+                assert conn.recv(1024).strip().decode().startswith('250')
+                
+                for rcpt in outsider[server]:
+                    conn.sendall(f'rcpt TO:<{rcpt}>\r\r'.encode())
                     assert conn.recv(1024).strip().decode().startswith('250')
-                    
-                    conn.sendall(f'mail FROM:<{self.mail_from}>\r\r'.encode())
-                    assert conn.recv(1024).strip().decode().startswith('250')
-                    
-                    for rcpt in outsider[domain]:
-                        conn.sendall(f'rcpt TO:<{rcpt}>\r\r'.encode())
-                        assert conn.recv(1024).strip().decode().startswith('250')
-                    
-                    conn.sendall(b'data\r\n')
-                    assert conn.recv(1024).strip().decode().startswith('354')
-                    
-                    conn.sendall(self.data_content)
-                    assert conn.recv(1024).strip().decode().startswith('250')
-                    
-                    conn.sendall(b'quit\r\n')
-                    assert conn.recv(1024).strip().decode().startswith('221')
-                    
-                    flag = True
-                except AssertionError as e:
-                    self.send(-1, 'An error occurred when sending emails')
-                finally:
-                    conn.close()
+                
+                conn.sendall(b'data\r\n')
+                assert conn.recv(1024).strip().decode().startswith('354')
+                
+                conn.sendall(self.data_content.encode())
+                assert conn.recv(1024).strip().decode().startswith('250')
+                
+                conn.sendall(b'quit\r\n')
+                assert conn.recv(1024).strip().decode().startswith('221')
+                
+                flag = True
+                # except AssertionError as e:
+                #     self.send(-1, 'An error occurred when sending emails')
+                # finally:
+                conn.close()
                 
             if not flag:
                 MAILBOXES[self.mail_from].append(self.data_content)
